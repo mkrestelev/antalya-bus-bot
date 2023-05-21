@@ -2,6 +2,7 @@ package com.krestelev.antalyabus.service;
 
 import com.krestelev.antalyabus.dto.AntalyaKartResponse.Bus;
 import com.krestelev.antalyabus.dto.UserRequest;
+import com.krestelev.antalyabus.exception.BusException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -9,7 +10,6 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -50,35 +50,36 @@ public class Bot extends TelegramLongPollingBot {
 
     private void handleGetUpcomingBusesRequest(String userInput, long chatId) {
         UserRequest request = busRequestParser.parseMessage(userInput);
-        List<Bus> buses = busService.getBuses(request);
-        if (CollectionUtils.isEmpty(buses)) {
-            sendMessage(chatId, "There is no upcoming buses for this stop");
-            return;
+        try {
+            List<Bus> buses = busService.getBuses(request);
+            if (request.isObserving()) {
+                Bus observedBus = buses.get(0);
+                if (observedBus.getTimeDiff() <= request.getInterval()) {
+                    sendMessage(chatId, getTrackIsFinishedMessage(observedBus));
+                    return;
+                }
+                Thread thread = new Thread(() -> observeBus(request, observedBus, chatId));
+                thread.start();
+                return;
+            }
+            sendMessage(chatId, convertUpcomingBusesMessage(buses));
+        } catch (BusException e) {
+            sendMessage(chatId, e.getMessage());
         }
-        if (request.isObserving()) {
-            Bus observedBus = buses.get(0);
-            sendMessage(chatId, convertUpcomingBusMessage(observedBus));
-            Thread thread = new Thread(() -> observeBus(request, observedBus, chatId));
-            thread.start();
-            return;
-        }
-        sendMessage(chatId, convertUpcomingBusesMessage(buses));
     }
 
     @SneakyThrows
     private void observeBus(UserRequest userRequest, Bus observedBus, long chatId) {
         String plate = observedBus.getPlate();
-        Thread.sleep((long) userRequest.getInterval() * MILLIS_IN_SECOND);
         Optional<Bus> busOptional = busService.getBuses(userRequest).stream()
             .filter(bus -> bus.getPlate().equals(plate))
             .findAny();
         if (busOptional.isPresent() && busOptional.get().getTimeDiff() > userRequest.getInterval()) {
             sendMessage(chatId, convertUpcomingBusMessage(busOptional.get()));
+            Thread.sleep((long) userRequest.getInterval() * MILLIS_IN_SECOND);
             observeBus(userRequest, observedBus, chatId);
         } else {
-            String message = String.format("Bus %s will come to %s stop within %s min, tracking is finished",
-                observedBus.getDisplayRouteCode(), userRequest.getStopId(), userRequest.getInterval());
-            sendMessage(chatId, message);
+            sendMessage(chatId, getTrackIsFinishedMessage(observedBus));
         }
     }
 
@@ -129,6 +130,10 @@ public class Bot extends TelegramLongPollingBot {
 
     private String convertUpcomingBusMessage(Bus bus) {
         return "Bus " + bus.getDisplayRouteCode() + " will come in " + bus.getTimeDiff() + " min";
+    }
+
+    private String getTrackIsFinishedMessage(Bus bus) {
+        return "Bus " + bus.getDisplayRouteCode() + " is about to arrive!";
     }
 
 }

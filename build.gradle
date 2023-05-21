@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.krestelev'
-version = '0.0.1-SNAPSHOT'
+version = '0.0.2'
 sourceCompatibility = '17'
 
 configurations {
@@ -22,6 +22,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation "org.telegram:telegrambots:$telegramVersion"
 	implementation "org.telegram:telegrambotsextensions:$telegramVersion"
+	implementation 'org.apache.commons:commons-math3:3.6.1'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

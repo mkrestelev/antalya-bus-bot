@@ -17,6 +17,8 @@ public class AntalyaKartResponse {
         String displayRouteCode;
         Integer stopDiff;
         Integer timeDiff;
+        Double lat;
+        Double lng;
     }
 
     @Data

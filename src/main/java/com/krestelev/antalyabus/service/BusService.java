@@ -7,10 +7,11 @@ import com.krestelev.antalyabus.exception.BusException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.math3.util.Precision;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -21,8 +22,9 @@ import org.springframework.web.client.RestTemplate;
 @RequiredArgsConstructor
 public class BusService {
 
-    public static final String CLOSEST_BUS_URI = "/bus/closest";
-    public static final String DEFAULT_REGION = "026";
+    private static final Pair<Double, Double> TUNEKTEPE_BUS_STATION_COORDINATES = Pair.of(36.8308009, 30.5962667);
+    private static final String CLOSEST_BUS_URI = "/bus/closest";
+    private static final String DEFAULT_REGION = "026";
 
     private final RestTemplate restTemplate;
 
@@ -33,7 +35,9 @@ public class BusService {
         String stopId = userRequest.getStopId();
         AntalyaKartResponse response = performGetBusesRequest(userRequest);
         validateResponse(response, stopId);
-        return getFilteredBuses(userRequest, response);
+        List<Bus> filteredBuses = getFilteredBuses(userRequest, response);
+        validateResult(stopId, filteredBuses);
+        return filteredBuses;
     }
 
     private static List<Bus> getFilteredBuses(UserRequest userRequest, AntalyaKartResponse response) {
@@ -41,8 +45,15 @@ public class BusService {
         if (StringUtils.isNotEmpty(userRequest.getBusId())) {
             buses.removeIf(bus -> !bus.getDisplayRouteCode().endsWith(userRequest.getBusId()));
         }
+        buses.removeIf(BusService::busHasNotDeparted);
         buses.sort(Comparator.comparing(Bus::getTimeDiff));
         return buses;
+    }
+
+    public static boolean busHasNotDeparted(Bus bus) {
+        double epsilon = 0.002d;
+        return Precision.equals(bus.getLat(), TUNEKTEPE_BUS_STATION_COORDINATES.getLeft(), epsilon)
+            && Precision.equals(bus.getLng(), TUNEKTEPE_BUS_STATION_COORDINATES.getRight(), epsilon);
     }
 
     private void validateResponse(AntalyaKartResponse response, String stopId) {
@@ -53,7 +64,10 @@ public class BusService {
             throw new BusException(String.format(
                 "There is no bus stop with number %s in the system, check entered number", stopId));
         }
-        if (CollectionUtils.isEmpty(response.getBuses())) {
+    }
+
+    private static void validateResult(String stopId, List<Bus> buses) {
+        if (CollectionUtils.isEmpty(buses)) {
             throw new BusException(String.format(
                 "Currently there is no buses for bus stop %s, try a bit later", stopId));
         }
