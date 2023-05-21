@@ -1,0 +1,6 @@
+kart:
+  base-uri: https://service.kentkart.com/api
+
+bot:
+  username: bus_antalya_bot
+  token: <token>
